@@ -1,0 +1,49 @@
+WEBVTT
+
+1
+00:00:05.100 --> 00:00:08.200
+Pablo Baeyens: Alright, let's get started. Welcome everyone to the Collector SIG meeting.
+
+2
+00:00:08.500 --> 00:00:12.300
+Pablo Baeyens: First item on the agenda today is the OTLP HTTP export improvements.
+
+3
+00:00:13.100 --> 00:00:18.400
+Pablo Baeyens: I've been working on adding partial success response support to the OTLP HTTP receiver.
+
+4
+00:00:18.800 --> 00:00:25.600
+Pablo Baeyens: The idea is that when a batch of spans comes in and some fail validation, we can tell the client exactly which ones were accepted.
+
+5
+00:00:26.200 --> 00:00:32.100
+Dmitrii Anoshin: That sounds great. How does this interact with the retry logic on the exporter side?
+
+6
+00:00:32.500 --> 00:00:40.300
+Pablo Baeyens: Good question. The exporter would need to understand the partial success response and only retry the rejected items, not the whole batch.
+
+7
+00:00:40.800 --> 00:00:48.200
+Dmitrii Anoshin: I'm a bit concerned about backward compatibility. What happens if an older exporter receives a partial success response?
+
+8
+00:00:48.600 --> 00:00:55.100
+Pablo Baeyens: We're making it opt-in. By default, the receiver will still return full success or full failure. You'd need to enable partial success in the config.
+
+9
+00:00:55.500 --> 00:01:02.300
+Bogdan Drutu: I think that's the right approach. We should also consider how this works with the batch processor.
+
+10
+00:01:02.800 --> 00:01:10.400
+Yang Song: On a related note, I've finished the batch processor memory improvements. We're seeing 40% less memory allocation in benchmarks.
+
+11
+00:01:10.800 --> 00:01:15.200
+Pablo Baeyens: That's excellent, Yang. Can you open a PR for review?
+
+12
+00:01:15.600 --> 00:01:18.900
+Yang Song: Sure, I'll have it up by end of day.

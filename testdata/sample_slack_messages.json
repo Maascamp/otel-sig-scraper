@@ -1,0 +1,65 @@
+[
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739890000.000100",
+    "thread_ts": "",
+    "user_id": "U01ABC123",
+    "user_name": "pablo.baeyens",
+    "text": "FYI: I've posted the OTEP draft for partial success in OTLP/HTTP. Please review when you get a chance: https://github.com/open-telemetry/oteps/pull/999",
+    "message_date": "2026-02-18T15:00:00Z"
+  },
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739890060.000200",
+    "thread_ts": "1739890000.000100",
+    "user_id": "U01DEF456",
+    "user_name": "dmitrii.anoshin",
+    "text": "Thanks Pablo! I'll take a look. One thing I want to make sure is that we have clear guidance for exporter authors on how to handle the new response format.",
+    "message_date": "2026-02-18T15:01:00Z"
+  },
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739890120.000300",
+    "thread_ts": "1739890000.000100",
+    "user_id": "U01GHI789",
+    "user_name": "yang.song",
+    "text": "+1 on the exporter guidance. Also, we should update the Datadog exporter to handle partial success once this lands.",
+    "message_date": "2026-02-18T15:02:00Z"
+  },
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739893600.000400",
+    "thread_ts": "",
+    "user_id": "U01JKL012",
+    "user_name": "alex.boten",
+    "text": "Heads up: the batch processor memory improvement PR is up for review. Benchmarks show 40% reduction in allocations. This should help with high-throughput collector deployments.",
+    "message_date": "2026-02-18T16:00:00Z"
+  },
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739897200.000500",
+    "thread_ts": "",
+    "user_id": "U01MNO345",
+    "user_name": "bogdan.drutu",
+    "text": "Quick reminder: we're looking for feedback on the pipeline fan-out/fan-in design doc. This would be a major architectural change for the collector. Please review: https://docs.google.com/document/d/1abc123/edit",
+    "message_date": "2026-02-18T17:00:00Z"
+  },
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739897260.000600",
+    "thread_ts": "1739897200.000500",
+    "user_id": "U01PQR678",
+    "user_name": "juraci.kroehling",
+    "text": "I've read through the doc. The fan-out pattern looks solid, but I have concerns about error propagation in the fan-in case. What happens when one branch fails?",
+    "message_date": "2026-02-18T17:01:00Z"
+  },
+  {
+    "channel_id": "C01N7PP1THC",
+    "message_ts": "1739897320.000700",
+    "thread_ts": "1739897200.000500",
+    "user_id": "U01MNO345",
+    "user_name": "bogdan.drutu",
+    "text": "Good point. I think we need a configurable error strategy - either fail-fast (stop all branches) or best-effort (continue with surviving branches). I'll add this to the doc.",
+    "message_date": "2026-02-18T17:02:00Z"
+  }
+]

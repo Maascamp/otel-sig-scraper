@@ -1,0 +1,60 @@
+OpenTelemetry Collector SIG Meeting Notes
+
+Feb 18, 2026
+
+Attendees: Pablo Baeyens, Dmitrii Anoshin, Juraci Paixão Kröhling, Bogdan Drutu, Alex Boten
+
+Agenda:
+* OTLP/HTTP export improvements
+* Collector pipeline refactoring proposal
+* Review of new processor component
+
+Discussion:
+Pablo presented the OTLP/HTTP export improvement proposal. The key change is adding support for partial success responses. This will allow receivers to indicate which spans/metrics were accepted and which were rejected, improving retry behavior.
+
+Dmitrii raised concerns about backward compatibility with existing exporters that don't handle partial success. The group decided to make it opt-in via configuration for the first release.
+
+Bogdan proposed a pipeline refactoring to support fan-out/fan-in patterns natively. This would allow a single pipeline to split data to multiple exporters and merge results. Discussion was positive but needs more design work.
+
+Action Items:
+- [ ] Pablo: Draft OTEP for partial success in OTLP/HTTP
+- [ ] Bogdan: Write design doc for pipeline fan-out/fan-in
+- [ ] Alex: Review and merge the batchprocessor memory improvements PR
+
+---
+
+Feb 11, 2026
+
+Attendees: Pablo Baeyens, Juraci Paixão Kröhling, Alex Boten, Yang Song
+
+Agenda:
+* Semantic conventions alignment for resource detection
+* Batch processor memory usage improvements
+
+Discussion:
+Yang presented the batch processor memory usage improvements. The new implementation reduces memory allocations by 40% for large batches by reusing buffers. Benchmarks show significant improvement for high-throughput pipelines.
+
+The group discussed semantic conventions alignment for resource detection processors. Several resource attributes need to be updated to match the latest semconv spec. This affects cloud provider detection and container runtime detection.
+
+Action Items:
+- [ ] Yang: Open PR for batch processor memory improvements
+- [ ] Juraci: Update resource detection processor for new semconv attributes
+
+---
+
+Feb 4, 2026
+
+Attendees: Dmitrii Anoshin, Bogdan Drutu, Pablo Baeyens
+
+Agenda:
+* OpAMP integration progress
+* Collector configuration validation improvements
+
+Discussion:
+Dmitrii gave an update on OpAMP integration. The collector can now receive configuration updates via OpAMP and apply them without restart. This is a significant milestone for agent management.
+
+Pablo discussed improvements to configuration validation. The new validator catches common misconfigurations (e.g., referencing non-existent pipeline components) at startup time rather than at runtime.
+
+Action Items:
+- [ ] Dmitrii: Document OpAMP integration setup guide
+- [ ] Pablo: Add more validation rules for exporter configurations

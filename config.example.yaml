@@ -1,0 +1,30 @@
+# OTel SIG Scraper Configuration
+# Copy to config.yaml and customize
+
+lookback: 7d
+output_dir: ./reports
+format: markdown
+workers: 4
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+
+# Optional: restrict to specific SIGs
+# sigs:
+#   - collector
+#   - specification
+#   - java-sdk
+#   - python-sdk
+#   - semantic-conventions
+
+# Optional: focus topics
+# topics:
+#   - OTLP
+#   - sampling
+#   - semantic conventions
+
+# Custom context is managed separately via:
+#   otel-sig-scraper context set --file my-context.md
+# Stored at: ~/.config/otel-sig-scraper/custom-context.md
+# Injected into the Datadog relevance scoring prompt only.
