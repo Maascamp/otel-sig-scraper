@@ -291,3 +291,67 @@ func TestFilterRecordingsForSIG_NilInput(t *testing.T) {
 		t.Errorf("filterRecordingsForSIG(nil): got %d, want 0", len(result))
 	}
 }
+
+func TestFilterSIGs_ExcludesLocalization(t *testing.T) {
+	sigs := []*store.SIG{
+		{ID: "collector", Name: "Collector", Category: "implementation"},
+		{ID: "chinese", Name: "Chinese", Category: "localization"},
+		{ID: "japanese", Name: "Japanese", Category: "localization"},
+		{ID: "specification", Name: "Specification", Category: "specification"},
+	}
+
+	// With no filter, localization SIGs should be excluded.
+	result := filterSIGs(sigs, nil)
+	if len(result) != 2 {
+		t.Fatalf("filterSIGs excluding localization: got %d SIGs, want 2", len(result))
+	}
+	for _, sig := range result {
+		if sig.Category == "localization" {
+			t.Errorf("localization SIG %q should have been filtered out", sig.ID)
+		}
+	}
+}
+
+func TestDeduplicateSIGs(t *testing.T) {
+	sigs := []*store.SIG{
+		{ID: "collector", Name: "Collector"},
+		{ID: "specification", Name: "Specification"},
+		{ID: "collector", Name: "Collector (old)"},
+		{ID: "specification", Name: "Specification (old)"},
+		{ID: "java", Name: "Java"},
+	}
+
+	result := deduplicateSIGs(sigs)
+	if len(result) != 3 {
+		t.Fatalf("deduplicateSIGs: got %d SIGs, want 3", len(result))
+	}
+	// Verify first occurrence is kept.
+	if result[0].Name != "Collector" {
+		t.Errorf("first dedup result name = %q, want %q", result[0].Name, "Collector")
+	}
+	if result[1].Name != "Specification" {
+		t.Errorf("second dedup result name = %q, want %q", result[1].Name, "Specification")
+	}
+	if result[2].Name != "Java" {
+		t.Errorf("third dedup result name = %q, want %q", result[2].Name, "Java")
+	}
+}
+
+func TestDeduplicateSIGs_NoDuplicates(t *testing.T) {
+	sigs := []*store.SIG{
+		{ID: "a", Name: "A"},
+		{ID: "b", Name: "B"},
+	}
+
+	result := deduplicateSIGs(sigs)
+	if len(result) != 2 {
+		t.Errorf("deduplicateSIGs with no dupes: got %d, want 2", len(result))
+	}
+}
+
+func TestDeduplicateSIGs_Empty(t *testing.T) {
+	result := deduplicateSIGs(nil)
+	if len(result) != 0 {
+		t.Errorf("deduplicateSIGs(nil): got %d, want 0", len(result))
+	}
+}

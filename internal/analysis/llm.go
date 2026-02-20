@@ -69,10 +69,23 @@ type SIGReport struct {
 	SlackChannel    string
 }
 
+// RunStats tracks resource usage for the entire pipeline run.
+type RunStats struct {
+	TotalTokensUsed   int
+	TotalLLMCalls     int
+	Model             string
+	Provider          string
+	SIGsProcessed     int
+	SIGsWithData      int
+	DurationSeconds   float64
+	EstimatedCostUSD  float64
+}
+
 // DigestReport is the weekly digest across all SIGs.
 type DigestReport struct {
 	DateRangeStart string
 	DateRangeEnd   string
 	SIGReports     []*SIGReport
 	CrossSIGThemes string
+	Stats          *RunStats
 }

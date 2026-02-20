@@ -47,6 +47,18 @@ type jsonRelevance struct {
 	TokensUsed  int      `json:"tokens_used"`
 }
 
+// jsonRunStats is the JSON-serializable form of run statistics.
+type jsonRunStats struct {
+	TotalTokensUsed  int     `json:"total_tokens_used"`
+	TotalLLMCalls    int     `json:"total_llm_calls"`
+	Model            string  `json:"model"`
+	Provider         string  `json:"provider"`
+	SIGsProcessed    int     `json:"sigs_processed"`
+	SIGsWithData     int     `json:"sigs_with_data"`
+	DurationSeconds  float64 `json:"duration_seconds"`
+	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
+}
+
 // jsonDigestReport is the JSON-serializable form of a digest report.
 type jsonDigestReport struct {
 	DateRangeStart string           `json:"date_range_start"`
@@ -54,6 +66,7 @@ type jsonDigestReport struct {
 	SIGCount       int              `json:"sig_count"`
 	SIGReports     []*jsonSIGReport `json:"sig_reports"`
 	CrossSIGThemes string           `json:"cross_sig_themes,omitempty"`
+	Stats          *jsonRunStats    `json:"stats,omitempty"`
 	GeneratedAt    string           `json:"generated_at"`
 }
 
@@ -94,6 +107,19 @@ func (g *JSONGenerator) GenerateDigestReport(digest *analysis.DigestReport) (str
 		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
 
+	if digest.Stats != nil {
+		jd.Stats = &jsonRunStats{
+			TotalTokensUsed:  digest.Stats.TotalTokensUsed,
+			TotalLLMCalls:    digest.Stats.TotalLLMCalls,
+			Model:            digest.Stats.Model,
+			Provider:         digest.Stats.Provider,
+			SIGsProcessed:    digest.Stats.SIGsProcessed,
+			SIGsWithData:     digest.Stats.SIGsWithData,
+			DurationSeconds:  digest.Stats.DurationSeconds,
+			EstimatedCostUSD: digest.Stats.EstimatedCostUSD,
+		}
+	}
+
 	for _, sr := range digest.SIGReports {
 		jd.SIGReports = append(jd.SIGReports, toJSONSIGReport(sr))
 	}
@@ -131,7 +157,7 @@ func toJSONSIGReport(report *analysis.SIGReport) *jsonSIGReport {
 
 	if report.RelevanceReport != nil {
 		jr.Relevance = &jsonRelevance{
-			Report:      report.RelevanceReport.Report,
+			Report:      stripReportHeading(report.RelevanceReport.Report),
 			HighItems:   report.RelevanceReport.HighItems,
 			MediumItems: report.RelevanceReport.MediumItems,
 			LowItems:    report.RelevanceReport.LowItems,

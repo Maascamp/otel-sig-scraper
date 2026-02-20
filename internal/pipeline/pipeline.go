@@ -200,6 +200,7 @@ func (p *Pipeline) FetchOnly(ctx context.Context) error {
 // using data already cached in the store.
 func (p *Pipeline) AnalyzeOnly(ctx context.Context) error {
 	log.Println("pipeline: starting analysis phase")
+	execStart := time.Now()
 
 	end := time.Now()
 	start := end.Add(-p.cfg.Lookback)
@@ -214,6 +215,13 @@ func (p *Pipeline) AnalyzeOnly(ctx context.Context) error {
 	if len(sigs) == 0 {
 		return fmt.Errorf("no SIGs found in store (run fetch first)")
 	}
+
+	// Deduplicate SIGs by ID (stale DB entries may produce duplicates).
+	sigs = deduplicateSIGs(sigs)
+
+	// Apply the same localization filter used during fetch.
+	sigs = filterSIGs(sigs, p.cfg.SIGs)
+
 	log.Printf("pipeline: analyzing %d SIGs", len(sigs))
 
 	// Analyze each SIG concurrently.
@@ -251,18 +259,44 @@ func (p *Pipeline) AnalyzeOnly(ctx context.Context) error {
 		return fmt.Errorf("analyzing SIGs: %w", err)
 	}
 
-	// Generate per-SIG reports.
+	// Compute run stats.
+	runDuration := time.Since(execStart)
+	totalTokens := 0
+	totalCalls := 0
+	sigsWithData := 0
 	for _, sr := range sigReports {
-		if err := p.generateSIGReport(sr); err != nil {
-			log.Printf("warning: failed to generate report for SIG %s: %v", sr.SIGID, err)
+		if sr.RelevanceReport != nil {
+			totalTokens += sr.RelevanceReport.TokensUsed
+			totalCalls++ // relevance call
+			sigsWithData++
 		}
 	}
+	// Rough estimate: each SIG with data has ~3 summarize + 1 synthesize + 1 relevance = 5 calls.
+	totalCalls = sigsWithData * 5
 
-	// Generate digest report.
+	costPerMillionTokens := 3.0 // default Sonnet pricing
+	if p.cfg.LLM.Provider == "openai" {
+		costPerMillionTokens = 3.0
+	}
+	estimatedCost := float64(totalTokens) / 1_000_000 * costPerMillionTokens
+
+	stats := &analysis.RunStats{
+		TotalTokensUsed:  totalTokens,
+		TotalLLMCalls:    totalCalls,
+		Model:            p.cfg.LLM.Model,
+		Provider:         p.cfg.LLM.Provider,
+		SIGsProcessed:    len(sigReports),
+		SIGsWithData:     sigsWithData,
+		DurationSeconds:  runDuration.Seconds(),
+		EstimatedCostUSD: estimatedCost,
+	}
+
+	// Generate digest report (the only output file).
 	digest := &analysis.DigestReport{
 		DateRangeStart: startStr,
 		DateRangeEnd:   endStr,
 		SIGReports:     sigReports,
+		Stats:          stats,
 	}
 
 	if err := p.generateDigestReport(digest); err != nil {
@@ -407,37 +441,6 @@ func (p *Pipeline) analyzeSIG(ctx context.Context, sig *store.SIG, start, end ti
 	return sr, nil
 }
 
-// generateSIGReport writes a per-SIG report in the configured format.
-func (p *Pipeline) generateSIGReport(sr *analysis.SIGReport) error {
-	switch p.cfg.Format {
-	case "markdown":
-		path, err := p.mdGenerator.GenerateSIGReport(sr)
-		if err != nil {
-			return err
-		}
-		log.Printf("pipeline: wrote markdown report %s", path)
-	case "json":
-		path, err := p.jsonGenerator.GenerateSIGReport(sr)
-		if err != nil {
-			return err
-		}
-		log.Printf("pipeline: wrote JSON report %s", path)
-	default:
-		// Write both formats.
-		if path, err := p.mdGenerator.GenerateSIGReport(sr); err != nil {
-			log.Printf("warning: failed to write markdown report for %s: %v", sr.SIGID, err)
-		} else {
-			log.Printf("pipeline: wrote markdown report %s", path)
-		}
-		if path, err := p.jsonGenerator.GenerateSIGReport(sr); err != nil {
-			log.Printf("warning: failed to write JSON report for %s: %v", sr.SIGID, err)
-		} else {
-			log.Printf("pipeline: wrote JSON report %s", path)
-		}
-	}
-	return nil
-}
-
 // generateDigestReport writes the weekly digest in the configured format.
 func (p *Pipeline) generateDigestReport(digest *analysis.DigestReport) error {
 	switch p.cfg.Format {
@@ -469,10 +472,19 @@ func (p *Pipeline) generateDigestReport(digest *analysis.DigestReport) error {
 }
 
 // filterSIGs returns only the SIGs whose IDs match the provided filter list.
-// If the filter list is empty, all SIGs are returned.
+// If the filter list is empty, all non-localization SIGs are returned.
+// Localization teams (language translation SIGs) are always excluded unless
+// explicitly requested by name.
 func filterSIGs(sigs []*store.SIG, filterIDs []string) []*store.SIG {
 	if len(filterIDs) == 0 {
-		return sigs
+		// Return all SIGs except localization teams.
+		var filtered []*store.SIG
+		for _, sig := range sigs {
+			if sig.Category != "localization" {
+				filtered = append(filtered, sig)
+			}
+		}
+		return filtered
 	}
 
 	idSet := make(map[string]bool, len(filterIDs))
@@ -496,6 +508,19 @@ func sigIDList(sigs []*store.SIG) []string {
 		ids[i] = sig.ID
 	}
 	return ids
+}
+
+// deduplicateSIGs removes duplicate SIGs by ID, keeping the first occurrence.
+func deduplicateSIGs(sigs []*store.SIG) []*store.SIG {
+	seen := make(map[string]bool, len(sigs))
+	var unique []*store.SIG
+	for _, sig := range sigs {
+		if !seen[sig.ID] {
+			seen[sig.ID] = true
+			unique = append(unique, sig)
+		}
+	}
+	return unique
 }
 
 // filterRecordingsForSIG returns recordings that match the given SIG ID.

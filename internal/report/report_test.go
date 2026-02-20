@@ -67,8 +67,27 @@ func newTestDigestReport() *analysis.DigestReport {
 				NotesLink:    "https://docs.google.com/document/d/spec456",
 				SlackChannel: "#otel-specification",
 			},
+			{
+				SIGID:          "empty-sig",
+				SIGName:        "Empty SIG",
+				Category:       "implementation",
+				DateRangeStart: "2026-02-11",
+				DateRangeEnd:   "2026-02-18",
+				SourcesUsed:    nil,
+				SourcesMissing: []string{"notes", "video", "slack"},
+			},
 		},
 		CrossSIGThemes: "Both SIGs discussed improvements to the OTLP protocol.",
+		Stats: &analysis.RunStats{
+			TotalTokensUsed:  2300,
+			TotalLLMCalls:    4,
+			Model:            "claude-sonnet-4-20250514",
+			Provider:         "anthropic",
+			SIGsProcessed:    2,
+			SIGsWithData:     2,
+			DurationSeconds:  12.5,
+			EstimatedCostUSD: 0.03,
+		},
 	}
 }
 
@@ -239,20 +258,14 @@ func TestMarkdownGenerator_GenerateDigestReport(t *testing.T) {
 		t.Error("digest should contain date range")
 	}
 
-	// Verify SIG count.
-	if !strings.Contains(content, "2 SIGs") {
+	// Verify SIG count (includes all SIGs, even empty ones).
+	if !strings.Contains(content, "3 SIGs") {
 		t.Error("digest should contain SIG count")
 	}
 
-	// Verify top items section.
-	if !strings.Contains(content, "Top Items for Datadog") {
-		t.Error("digest should contain Top Items section")
-	}
-	if !strings.Contains(content, "OTLP/HTTP Partial Success") {
-		t.Error("digest should contain high relevance items from SIGs")
-	}
-	if !strings.Contains(content, "Profiling Signal OTEP") {
-		t.Error("digest should contain high relevance items from Specification SIG")
+	// Verify "Top Items" section was removed.
+	if strings.Contains(content, "Top Items for Datadog") {
+		t.Error("digest should NOT contain Top Items section (removed)")
 	}
 
 	// Verify SIG-by-SIG summaries.
@@ -266,6 +279,14 @@ func TestMarkdownGenerator_GenerateDigestReport(t *testing.T) {
 		t.Error("digest should contain Specification SIG heading")
 	}
 
+	// Empty SIGs should NOT appear in the summaries section.
+	if strings.Contains(content, "### Empty SIG") {
+		t.Error("digest should NOT contain empty SIG heading in summaries")
+	}
+	if strings.Contains(content, "_No analysis available._") {
+		t.Error("digest should NOT contain 'No analysis available' placeholder")
+	}
+
 	// Verify cross-SIG themes.
 	if !strings.Contains(content, "## Cross-SIG Themes") {
 		t.Error("digest should contain Cross-SIG Themes section")
@@ -274,7 +295,7 @@ func TestMarkdownGenerator_GenerateDigestReport(t *testing.T) {
 		t.Error("digest should contain cross-SIG themes content")
 	}
 
-	// Verify processing stats table.
+	// Verify processing stats table — ALL SIGs should appear here, including empty ones.
 	if !strings.Contains(content, "## Appendix: Processing Stats") {
 		t.Error("digest should contain Processing Stats appendix")
 	}
@@ -283,6 +304,23 @@ func TestMarkdownGenerator_GenerateDigestReport(t *testing.T) {
 	}
 	if !strings.Contains(content, "| Specification |") {
 		t.Error("digest should contain Specification row in stats table")
+	}
+	if !strings.Contains(content, "| Empty SIG |") {
+		t.Error("digest should contain Empty SIG row in stats table")
+	}
+
+	// Verify Run Info appendix.
+	if !strings.Contains(content, "## Appendix: Run Info") {
+		t.Error("digest should contain Run Info appendix")
+	}
+	if !strings.Contains(content, "anthropic") {
+		t.Error("digest should contain LLM provider in Run Info")
+	}
+	if !strings.Contains(content, "claude-sonnet-4-20250514") {
+		t.Error("digest should contain model name in Run Info")
+	}
+	if !strings.Contains(content, "$0.03") {
+		t.Error("digest should contain estimated cost in Run Info")
 	}
 }
 
@@ -490,11 +528,11 @@ func TestJSONGenerator_GenerateDigestReport(t *testing.T) {
 	if jd.DateRangeEnd != "2026-02-18" {
 		t.Errorf("date_range_end = %q, want %q", jd.DateRangeEnd, "2026-02-18")
 	}
-	if jd.SIGCount != 2 {
-		t.Errorf("sig_count = %d, want 2", jd.SIGCount)
+	if jd.SIGCount != 3 {
+		t.Errorf("sig_count = %d, want 3", jd.SIGCount)
 	}
-	if len(jd.SIGReports) != 2 {
-		t.Fatalf("sig_reports length = %d, want 2", len(jd.SIGReports))
+	if len(jd.SIGReports) != 3 {
+		t.Fatalf("sig_reports length = %d, want 3", len(jd.SIGReports))
 	}
 	if jd.CrossSIGThemes != "Both SIGs discussed improvements to the OTLP protocol." {
 		t.Errorf("cross_sig_themes = %q, unexpected", jd.CrossSIGThemes)
@@ -509,6 +547,23 @@ func TestJSONGenerator_GenerateDigestReport(t *testing.T) {
 	}
 	if jd.SIGReports[1].SIGID != "specification" {
 		t.Errorf("second SIG report sig_id = %q, want %q", jd.SIGReports[1].SIGID, "specification")
+	}
+
+	// Verify stats.
+	if jd.Stats == nil {
+		t.Fatal("stats should not be nil")
+	}
+	if jd.Stats.TotalTokensUsed != 2300 {
+		t.Errorf("total_tokens_used = %d, want 2300", jd.Stats.TotalTokensUsed)
+	}
+	if jd.Stats.TotalLLMCalls != 4 {
+		t.Errorf("total_llm_calls = %d, want 4", jd.Stats.TotalLLMCalls)
+	}
+	if jd.Stats.Model != "claude-sonnet-4-20250514" {
+		t.Errorf("model = %q, want %q", jd.Stats.Model, "claude-sonnet-4-20250514")
+	}
+	if jd.Stats.Provider != "anthropic" {
+		t.Errorf("provider = %q, want %q", jd.Stats.Provider, "anthropic")
 	}
 }
 
@@ -657,6 +712,59 @@ func TestDigestJSONFilename(t *testing.T) {
 	got := digestJSONFilename("2026-02-18")
 	if got != "2026-02-18-weekly-digest.json" {
 		t.Errorf("digestJSONFilename = %q, want %q", got, "2026-02-18-weekly-digest.json")
+	}
+}
+
+func TestStripReportHeading(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "no heading",
+			input: "## Section One\nContent here.",
+			want:  "## Section One\nContent here.",
+		},
+		{
+			name:  "with title heading",
+			input: "# Datadog Intelligence Report: OpenTelemetry Communications SIG\n\n## Section One\nContent here.",
+			want:  "## Section One\nContent here.",
+		},
+		{
+			name:  "with title and subtitle",
+			input: "# Datadog Relevance Report: OpenTelemetry Logs SIG (Feb 12-19, 2026)\n**Analysis Period: Feb 12-19, 2026**\n\n## Section One\nContent here.",
+			want:  "## Section One\nContent here.",
+		},
+		{
+			name:  "heading only",
+			input: "# Just a Heading",
+			want:  "",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "preserves ## headings",
+			input: "## This is a section\nContent.",
+			want:  "## This is a section\nContent.",
+		},
+		{
+			name:  "multiple blank lines between heading and content",
+			input: "# Title\n\n\n## Section\nContent.",
+			want:  "## Section\nContent.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripReportHeading(tt.input)
+			if got != tt.want {
+				t.Errorf("stripReportHeading() =\n%q\nwant:\n%q", got, tt.want)
+			}
+		})
 	}
 }
 

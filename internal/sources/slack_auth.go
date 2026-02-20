@@ -59,39 +59,101 @@ func SlackLogin(ctx context.Context, credsFile string) error {
 
 	log.Println("slack-login: waiting for authentication to complete...")
 
-	// Wait until the user is logged in by polling for the presence of
-	// boot_data or api_token in the page.
+	// extractToken is the JS snippet that looks for an xoxc- token in all
+	// known locations within Slack's web client.
+	const extractTokenJS = `
+		(function() {
+			// Try boot_data first (most common).
+			if (window.boot_data && window.boot_data.api_token) {
+				return window.boot_data.api_token;
+			}
+			// Try localStorage.
+			var localToken = localStorage.getItem('localConfig_v2');
+			if (localToken) {
+				try {
+					var parsed = JSON.parse(localToken);
+					if (parsed && parsed.teams) {
+						var teams = Object.values(parsed.teams);
+						for (var i = 0; i < teams.length; i++) {
+							if (teams[i].token) return teams[i].token;
+						}
+					}
+				} catch(e) {}
+			}
+			// Try other known locations.
+			if (window.TS && window.TS.boot_data && window.TS.boot_data.api_token) {
+				return window.TS.boot_data.api_token;
+			}
+			return "";
+		})()`
+
+	// Poll until we can extract an xoxc- token. Along the way, handle the
+	// "open in desktop app" redirect that appears when Slack is installed.
 	var token string
 	err := chromedp.Run(browserCtx,
-		// Wait for the main Slack client to load (indicated by boot_data being available).
-		chromedp.WaitVisible(`[data-qa="channel_sidebar"]`, chromedp.ByQuery),
-		// Extract the API token from the page.
-		chromedp.Evaluate(`
-			(function() {
-				// Try boot_data first (most common).
-				if (window.boot_data && window.boot_data.api_token) {
-					return window.boot_data.api_token;
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			ticker := time.NewTicker(2 * time.Second)
+			defer ticker.Stop()
+			handledRedirect := false
+
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-ticker.C:
 				}
-				// Try localStorage.
-				var localToken = localStorage.getItem('localConfig_v2');
-				if (localToken) {
-					try {
-						var parsed = JSON.parse(localToken);
-						if (parsed && parsed.teams) {
-							var teams = Object.values(parsed.teams);
-							for (var i = 0; i < teams.length; i++) {
-								if (teams[i].token) return teams[i].token;
+
+				// Try to extract the token directly — this is the real
+				// success condition, not any particular DOM element.
+				var candidate string
+				if evalErr := chromedp.Evaluate(extractTokenJS, &candidate).Do(ctx); evalErr == nil {
+					if strings.HasPrefix(candidate, "xoxc-") {
+						token = candidate
+						return nil
+					}
+				}
+
+				// If we haven't handled the redirect yet, check for it.
+				if handledRedirect {
+					continue
+				}
+
+				// Look for the "use Slack in your browser" link that
+				// appears when the desktop app redirect modal is shown.
+				var clicked bool
+				_ = chromedp.Evaluate(`
+					(function() {
+						var links = document.querySelectorAll('a');
+						for (var i = 0; i < links.length; i++) {
+							var text = links[i].textContent.toLowerCase();
+							if (text.includes('use slack in your browser') ||
+								text.includes('open in browser') ||
+								text.includes('continue in browser') ||
+								text.includes('use the web version')) {
+								links[i].click();
+								return true;
 							}
 						}
-					} catch(e) {}
+						return false;
+					})()
+				`, &clicked).Do(ctx)
+				if clicked {
+					log.Println("slack-login: dismissed 'open in app' prompt, loading web client...")
+					handledRedirect = true
+					continue
 				}
-				// Try other known locations.
-				if (window.TS && window.TS.boot_data && window.TS.boot_data.api_token) {
-					return window.TS.boot_data.api_token;
+
+				// Check if we landed on an app redirect URL and navigate
+				// directly to the web client instead.
+				var currentURL string
+				_ = chromedp.Evaluate(`window.location.href`, &currentURL).Do(ctx)
+				if strings.Contains(currentURL, "/ssb/") || strings.Contains(currentURL, "app_redirect") {
+					log.Println("slack-login: detected app redirect, navigating to web client...")
+					_ = chromedp.Navigate("https://app.slack.com/client").Do(ctx)
+					handledRedirect = true
 				}
-				return "";
-			})()
-		`, &token),
+			}
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("waiting for login / extracting token: %w", err)

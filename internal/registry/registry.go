@@ -166,15 +166,29 @@ func splitTableRow(line string) []string {
 	return cells
 }
 
-// cleanMarkdown strips markdown formatting from text.
+// cleanMarkdown strips markdown formatting and HTML tags from text.
 func cleanMarkdown(s string) string {
 	s = strings.TrimSpace(s)
+	// Remove HTML tags (e.g., <a id="...">...</a>, <sup>, <br>, &nbsp;)
+	htmlTagRegex := regexp.MustCompile(`<[^>]+>`)
+	s = htmlTagRegex.ReplaceAllString(s, "")
+	// Remove link indicator emojis that remain after HTML tag removal.
+	s = strings.ReplaceAll(s, "🔗", "")
+	// Remove HTML entities
+	s = strings.ReplaceAll(s, "&nbsp;", " ")
+	s = strings.ReplaceAll(s, "&amp;", "&")
+	s = strings.ReplaceAll(s, "&lt;", "<")
+	s = strings.ReplaceAll(s, "&gt;", ">")
 	// Remove markdown links: [text](url) → text
 	linkRegex := regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
 	s = linkRegex.ReplaceAllString(s, "$1")
 	// Remove bold/italic markers
 	s = strings.ReplaceAll(s, "**", "")
 	s = strings.ReplaceAll(s, "*", "")
+	// Collapse multiple spaces
+	for strings.Contains(s, "  ") {
+		s = strings.ReplaceAll(s, "  ", " ")
+	}
 	return strings.TrimSpace(s)
 }
 

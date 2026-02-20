@@ -115,33 +115,15 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 		time.Now().UTC().Format("2006-01-02 15:04 UTC"),
 	)
 
-	// Top Items for Datadog - collect all high-relevance items across SIGs
-	var topItems []string
-	for _, sr := range digest.SIGReports {
-		if sr.RelevanceReport != nil {
-			for _, item := range sr.RelevanceReport.HighItems {
-				topItems = append(topItems, fmt.Sprintf("**[%s]** %s", sr.SIGName, item))
-			}
-		}
-	}
-	if len(topItems) > 0 {
-		b.WriteString("## 🔴 Top Items for Datadog\n\n")
-		for i, item := range topItems {
-			fmt.Fprintf(&b, "%d. %s\n", i+1, item)
-		}
-		b.WriteString("\n")
-	}
-
-	// SIG-by-SIG Summaries
+	// SIG-by-SIG Summaries (only SIGs with analysis data)
 	b.WriteString("## SIG-by-SIG Summaries\n\n")
 	for _, sr := range digest.SIGReports {
-		fmt.Fprintf(&b, "### %s\n\n", sr.SIGName)
-		if sr.RelevanceReport != nil && sr.RelevanceReport.Report != "" {
-			b.WriteString(sr.RelevanceReport.Report)
-			b.WriteString("\n\n")
-		} else {
-			b.WriteString("_No analysis available._\n\n")
+		if sr.RelevanceReport == nil || sr.RelevanceReport.Report == "" {
+			continue
 		}
+		fmt.Fprintf(&b, "### %s\n\n", sr.SIGName)
+		b.WriteString(stripReportHeading(sr.RelevanceReport.Report))
+		b.WriteString("\n\n")
 	}
 
 	// Cross-SIG Themes
@@ -165,6 +147,22 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 		)
 	}
 	b.WriteString("\n")
+
+	// Appendix: Run Info
+	if digest.Stats != nil {
+		b.WriteString("## Appendix: Run Info\n\n")
+		b.WriteString("| Metric | Value |\n")
+		b.WriteString("|--------|-------|\n")
+		fmt.Fprintf(&b, "| LLM Provider | %s |\n", digest.Stats.Provider)
+		fmt.Fprintf(&b, "| Model | `%s` |\n", digest.Stats.Model)
+		fmt.Fprintf(&b, "| Total Tokens Used | %s |\n", formatTokens(digest.Stats.TotalTokensUsed))
+		fmt.Fprintf(&b, "| LLM Calls | %d |\n", digest.Stats.TotalLLMCalls)
+		fmt.Fprintf(&b, "| Estimated Cost | $%.2f |\n", digest.Stats.EstimatedCostUSD)
+		fmt.Fprintf(&b, "| SIGs Processed | %d |\n", digest.Stats.SIGsProcessed)
+		fmt.Fprintf(&b, "| SIGs With Data | %d |\n", digest.Stats.SIGsWithData)
+		fmt.Fprintf(&b, "| Duration | %.1fs |\n", digest.Stats.DurationSeconds)
+		b.WriteString("\n")
+	}
 
 	// Write file
 	filename := digestFilename(digest.DateRangeEnd)
@@ -234,6 +232,17 @@ func sigReportFilename(dateEnd, sigID string) string {
 	return fmt.Sprintf("%s-%s-report.md", date, slug)
 }
 
+// formatTokens formats a token count with commas for readability.
+func formatTokens(n int) string {
+	if n < 1000 {
+		return fmt.Sprintf("%d", n)
+	}
+	if n < 1_000_000 {
+		return fmt.Sprintf("%dk", n/1000)
+	}
+	return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+}
+
 // digestFilename generates a filename like "2026-02-19-weekly-digest.md".
 func digestFilename(dateEnd string) string {
 	date := dateEnd
@@ -241,4 +250,36 @@ func digestFilename(dateEnd string) string {
 		date = time.Now().Format("2006-01-02")
 	}
 	return fmt.Sprintf("%s-weekly-digest.md", date)
+}
+
+// stripReportHeading removes the leading title heading and optional subtitle
+// lines that the LLM inconsistently adds to its report output. It strips any
+// leading lines starting with "# " or "**Analysis" before the first "## " section.
+func stripReportHeading(text string) string {
+	lines := strings.Split(text, "\n")
+	start := 0
+	for start < len(lines) {
+		trimmed := strings.TrimSpace(lines[start])
+		if trimmed == "" {
+			// Skip blank lines between heading and content.
+			start++
+			continue
+		}
+		if strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "## ") {
+			// Top-level heading added by LLM — skip it.
+			start++
+			continue
+		}
+		if strings.HasPrefix(trimmed, "**Analysis") {
+			// Subtitle line like "**Analysis Period: ...**" — skip it.
+			start++
+			continue
+		}
+		// Reached real content.
+		break
+	}
+	if start == 0 {
+		return text
+	}
+	return strings.Join(lines[start:], "\n")
 }
