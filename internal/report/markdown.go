@@ -50,7 +50,7 @@ func (g *MarkdownGenerator) GenerateSIGReport(report *analysis.SIGReport) (strin
 
 	// High Relevance Items
 	if report.RelevanceReport != nil && len(report.RelevanceReport.HighItems) > 0 {
-		b.WriteString("## 🔴 High Relevance to Datadog\n\n")
+		b.WriteString("#### 🔴 High Relevance to Datadog\n\n")
 		for _, item := range report.RelevanceReport.HighItems {
 			writeRelevanceItem(&b, item)
 		}
@@ -58,7 +58,7 @@ func (g *MarkdownGenerator) GenerateSIGReport(report *analysis.SIGReport) (strin
 
 	// Medium Relevance Items
 	if report.RelevanceReport != nil && len(report.RelevanceReport.MediumItems) > 0 {
-		b.WriteString("## 🟡 Medium Relevance to Datadog\n\n")
+		b.WriteString("#### 🟡 Medium Relevance to Datadog\n\n")
 		for _, item := range report.RelevanceReport.MediumItems {
 			writeRelevanceItem(&b, item)
 		}
@@ -66,7 +66,7 @@ func (g *MarkdownGenerator) GenerateSIGReport(report *analysis.SIGReport) (strin
 
 	// Low Relevance Items
 	if report.RelevanceReport != nil && len(report.RelevanceReport.LowItems) > 0 {
-		b.WriteString("## 🟢 Low Relevance / FYI\n\n")
+		b.WriteString("#### 🟢 Low Relevance / FYI\n\n")
 		for _, item := range report.RelevanceReport.LowItems {
 			fmt.Fprintf(&b, "- %s\n", item)
 		}
@@ -121,7 +121,7 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 		if sr.RelevanceReport == nil || sr.RelevanceReport.Report == "" {
 			continue
 		}
-		fmt.Fprintf(&b, "### %s\n\n", sr.SIGName)
+		fmt.Fprintf(&b, "# %s\n\n", sr.SIGName)
 		b.WriteString(stripReportHeading(sr.RelevanceReport.Report))
 		b.WriteString("\n\n")
 	}
@@ -254,7 +254,7 @@ func digestFilename(dateEnd string) string {
 
 // stripReportHeading removes the leading title heading and optional subtitle
 // lines that the LLM inconsistently adds to its report output. It strips any
-// leading lines starting with "# " or "**Analysis" before the first "## " section.
+// leading lines starting with "#"–"###" or "**Analysis" before the first "####" section.
 func stripReportHeading(text string) string {
 	lines := strings.Split(text, "\n")
 	start := 0
@@ -265,8 +265,8 @@ func stripReportHeading(text string) string {
 			start++
 			continue
 		}
-		if strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "## ") {
-			// Top-level heading added by LLM — skip it.
+		if strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "#### ") {
+			// Heading levels 1–3 added by LLM — skip them.
 			start++
 			continue
 		}

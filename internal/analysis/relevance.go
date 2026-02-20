@@ -151,12 +151,12 @@ func buildRelevanceSystemPrompt(customContext string) string {
 	sb.WriteString(datadogRelevanceKeywords)
 
 	sb.WriteString("\n\nFormat your response with clear markdown sections:\n")
-	sb.WriteString("## HIGH Relevance\n")
+	sb.WriteString("#### HIGH Relevance\n")
 	sb.WriteString("List each high-relevance item as a bullet point starting with '- '.\n")
 	sb.WriteString("Include actionable recommendations for each.\n\n")
-	sb.WriteString("## MEDIUM Relevance\n")
+	sb.WriteString("#### MEDIUM Relevance\n")
 	sb.WriteString("List each medium-relevance item as a bullet point starting with '- '.\n\n")
-	sb.WriteString("## LOW Relevance\n")
+	sb.WriteString("#### LOW Relevance\n")
 	sb.WriteString("List each low-relevance item as a bullet point starting with '- '.\n")
 
 	if customContext != "" {
@@ -168,7 +168,7 @@ func buildRelevanceSystemPrompt(customContext string) string {
 }
 
 // parseRelevanceItems extracts HIGH, MEDIUM, and LOW items from the LLM output.
-// It looks for markdown headers like "## HIGH Relevance", "## MEDIUM Relevance", "## LOW Relevance"
+// It looks for markdown headers like "#### HIGH Relevance", "#### MEDIUM Relevance", "#### LOW Relevance"
 // and collects bullet points under each section.
 func parseRelevanceItems(content string) (high, medium, low []string) {
 	lines := strings.Split(content, "\n")

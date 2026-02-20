@@ -23,11 +23,11 @@ func newTestSIGReport() *analysis.SIGReport {
 			SIGID:   "collector",
 			SIGName: "Collector",
 			Report: "## Executive Summary\nThe Collector SIG discussed OTLP improvements.\n\n" +
-				"## HIGH Relevance\n### OTLP/HTTP Partial Success\n- **What**: New partial success response support\n" +
+				"#### HIGH Relevance\n### OTLP/HTTP Partial Success\n- **What**: New partial success response support\n" +
 				"- **Why it matters**: Directly affects Datadog OTLP ingest\n- **Action recommended**: Review the OTEP draft\n\n" +
-				"## MEDIUM Relevance\n### Pipeline Fan-out/Fan-in\n- **What**: Architectural change for fan-out patterns\n" +
+				"#### MEDIUM Relevance\n### Pipeline Fan-out/Fan-in\n- **What**: Architectural change for fan-out patterns\n" +
 				"- **Context**: Could affect Datadog exporter pipeline\n\n" +
-				"## LOW Relevance\n- Batch processor memory improvements",
+				"#### LOW Relevance\n- Batch processor memory improvements",
 			HighItems:   []string{"OTLP/HTTP Partial Success"},
 			MediumItems: []string{"Pipeline Fan-out/Fan-in"},
 			LowItems:    []string{"Batch processor memory improvements"},
@@ -272,15 +272,15 @@ func TestMarkdownGenerator_GenerateDigestReport(t *testing.T) {
 	if !strings.Contains(content, "## SIG-by-SIG Summaries") {
 		t.Error("digest should contain SIG-by-SIG Summaries section")
 	}
-	if !strings.Contains(content, "### Collector") {
+	if !strings.Contains(content, "# Collector") {
 		t.Error("digest should contain Collector SIG heading")
 	}
-	if !strings.Contains(content, "### Specification") {
+	if !strings.Contains(content, "# Specification") {
 		t.Error("digest should contain Specification SIG heading")
 	}
 
 	// Empty SIGs should NOT appear in the summaries section.
-	if strings.Contains(content, "### Empty SIG") {
+	if strings.Contains(content, "# Empty SIG") {
 		t.Error("digest should NOT contain empty SIG heading in summaries")
 	}
 	if strings.Contains(content, "_No analysis available._") {
@@ -723,18 +723,18 @@ func TestStripReportHeading(t *testing.T) {
 	}{
 		{
 			name:  "no heading",
-			input: "## Section One\nContent here.",
-			want:  "## Section One\nContent here.",
+			input: "#### Section One\nContent here.",
+			want:  "#### Section One\nContent here.",
 		},
 		{
 			name:  "with title heading",
-			input: "# Datadog Intelligence Report: OpenTelemetry Communications SIG\n\n## Section One\nContent here.",
-			want:  "## Section One\nContent here.",
+			input: "# Datadog Intelligence Report: OpenTelemetry Communications SIG\n\n#### Section One\nContent here.",
+			want:  "#### Section One\nContent here.",
 		},
 		{
 			name:  "with title and subtitle",
-			input: "# Datadog Relevance Report: OpenTelemetry Logs SIG (Feb 12-19, 2026)\n**Analysis Period: Feb 12-19, 2026**\n\n## Section One\nContent here.",
-			want:  "## Section One\nContent here.",
+			input: "# Datadog Relevance Report: OpenTelemetry Logs SIG (Feb 12-19, 2026)\n**Analysis Period: Feb 12-19, 2026**\n\n#### Section One\nContent here.",
+			want:  "#### Section One\nContent here.",
 		},
 		{
 			name:  "heading only",
@@ -747,14 +747,19 @@ func TestStripReportHeading(t *testing.T) {
 			want:  "",
 		},
 		{
-			name:  "preserves ## headings",
-			input: "## This is a section\nContent.",
-			want:  "## This is a section\nContent.",
+			name:  "preserves #### headings",
+			input: "#### This is a section\nContent.",
+			want:  "#### This is a section\nContent.",
+		},
+		{
+			name:  "preserves ## headings that are not top-level",
+			input: "## Overview\n#### Section\nContent.",
+			want:  "## Overview\n#### Section\nContent.",
 		},
 		{
 			name:  "multiple blank lines between heading and content",
-			input: "# Title\n\n\n## Section\nContent.",
-			want:  "## Section\nContent.",
+			input: "# Title\n\n\n#### Section\nContent.",
+			want:  "#### Section\nContent.",
 		},
 	}
 

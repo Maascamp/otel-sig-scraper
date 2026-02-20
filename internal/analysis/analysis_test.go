@@ -480,15 +480,15 @@ func TestSynthesize_LLMError(t *testing.T) {
 const mockRelevanceResponse = `## Executive Summary
 The Collector SIG discussed OTLP improvements.
 
-## HIGH Relevance
+#### HIGH Relevance
 - OTLP/HTTP Partial Success: New partial success response support directly affects Datadog OTLP ingest
 - Semantic Convention Changes: Breaking changes to HTTP semantic conventions
 
-## MEDIUM Relevance
+#### MEDIUM Relevance
 - Pipeline Fan-out/Fan-in: Architectural change for fan-out patterns
 - SDK Lifecycle Improvements: Better provider shutdown handling
 
-## LOW Relevance
+#### LOW Relevance
 - Batch processor memory improvements
 - Documentation updates for contributing guide`
 
@@ -619,15 +619,15 @@ func TestParseRelevanceItems(t *testing.T) {
 	content := `## Executive Summary
 Some executive summary text.
 
-## HIGH Relevance
+#### HIGH Relevance
 - OTLP/HTTP Partial Success: directly affects ingest
 - Semantic Convention Breaking Changes: HTTP conventions renamed
 
-## MEDIUM Relevance
+#### MEDIUM Relevance
 - Pipeline Fan-out: new architecture
 - SDK Lifecycle: improved shutdown
 
-## LOW Relevance
+#### LOW Relevance
 - Batch processor memory improvements
 - Docs updates
 `
@@ -675,13 +675,13 @@ func TestParseRelevanceItems_BoldHeaders(t *testing.T) {
 }
 
 func TestParseRelevanceItems_AsteriskBullets(t *testing.T) {
-	content := `## HIGH Relevance
+	content := `#### HIGH Relevance
 * Item using asterisk bullet
 
-## MEDIUM Relevance
+#### MEDIUM Relevance
 * Another asterisk item
 
-## LOW Relevance
+#### LOW Relevance
 * Low item with asterisk
 `
 	high, medium, low := parseRelevanceItems(content)
@@ -739,7 +739,7 @@ func TestBuildRelevanceSystemPrompt_NoCustomContext(t *testing.T) {
 	if !containsStr(prompt, "intelligence report for Datadog") {
 		t.Error("prompt should contain Datadog intelligence report instruction")
 	}
-	if !containsStr(prompt, "## HIGH Relevance") {
+	if !containsStr(prompt, "#### HIGH Relevance") {
 		t.Error("prompt should contain HIGH Relevance format instruction")
 	}
 	if containsStr(prompt, "Additional Context from User") {
