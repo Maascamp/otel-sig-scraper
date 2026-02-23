@@ -20,3 +20,6 @@ reports/*.json
 
 # Config with secrets
 config.yaml
+
+# Misc
+.claude
