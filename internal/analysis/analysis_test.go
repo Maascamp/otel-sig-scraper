@@ -477,20 +477,17 @@ func TestSynthesize_LLMError(t *testing.T) {
 // RelevanceScorer tests
 // ---------------------------------------------------------------------------
 
-const mockRelevanceResponse = `## Executive Summary
-The Collector SIG discussed OTLP improvements.
-
-#### HIGH Relevance
-- OTLP/HTTP Partial Success: New partial success response support directly affects Datadog OTLP ingest
-- Semantic Convention Changes: Breaking changes to HTTP semantic conventions
+const mockRelevanceResponse = `#### HIGH Relevance
+- **OTLP/HTTP Partial Success** — New partial success response support directly affects Datadog OTLP ingest. Review the OTEP draft.
+- **Semantic Convention Changes** — Breaking changes to HTTP semantic conventions require SDK updates.
 
 #### MEDIUM Relevance
-- Pipeline Fan-out/Fan-in: Architectural change for fan-out patterns
-- SDK Lifecycle Improvements: Better provider shutdown handling
+- **Pipeline Fan-out/Fan-in** — Architectural change for fan-out patterns could affect Datadog exporter pipeline.
+- **SDK Lifecycle Improvements** — Better provider shutdown handling improves reliability.
 
 #### LOW Relevance
-- Batch processor memory improvements
-- Documentation updates for contributing guide`
+- **Batch Processor Memory** — Minor memory improvements to batch processor.
+- **Docs Updates** — Documentation updates for contributing guide.`
 
 func TestRelevanceScorer_Score(t *testing.T) {
 	s := newTestStore(t)
@@ -616,20 +613,17 @@ func TestRelevanceScorer_WithCustomContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestParseRelevanceItems(t *testing.T) {
-	content := `## Executive Summary
-Some executive summary text.
-
-#### HIGH Relevance
-- OTLP/HTTP Partial Success: directly affects ingest
-- Semantic Convention Breaking Changes: HTTP conventions renamed
+	content := `#### HIGH Relevance
+- **OTLP/HTTP Partial Success** — directly affects ingest. Review the OTEP draft.
+- **Semantic Convention Breaking Changes** — HTTP conventions renamed.
 
 #### MEDIUM Relevance
-- Pipeline Fan-out: new architecture
-- SDK Lifecycle: improved shutdown
+- **Pipeline Fan-out** — new architecture for fan-out patterns.
+- **SDK Lifecycle** — improved shutdown handling.
 
 #### LOW Relevance
-- Batch processor memory improvements
-- Docs updates
+- **Batch Processor Memory** — minor memory improvements.
+- **Docs Updates** — documentation updates for contributing guide.
 `
 
 	high, medium, low := parseRelevanceItems(content)
@@ -645,7 +639,7 @@ Some executive summary text.
 	}
 
 	// Verify specific items.
-	if len(high) > 0 && high[0] != "OTLP/HTTP Partial Success: directly affects ingest" {
+	if len(high) > 0 && high[0] != "**OTLP/HTTP Partial Success** — directly affects ingest. Review the OTEP draft." {
 		t.Errorf("first high item = %q, unexpected", high[0])
 	}
 }
@@ -735,12 +729,16 @@ func TestParseRelevanceItems_NoSections(t *testing.T) {
 func TestBuildRelevanceSystemPrompt_NoCustomContext(t *testing.T) {
 	prompt := buildRelevanceSystemPrompt("")
 
-	// Should contain standard sections but no custom context header.
-	if !containsStr(prompt, "intelligence report for Datadog") {
-		t.Error("prompt should contain Datadog intelligence report instruction")
+	// Should contain concise brief language.
+	if !containsStr(prompt, "intelligence brief") {
+		t.Error("prompt should contain 'intelligence brief' instruction")
 	}
 	if !containsStr(prompt, "#### HIGH Relevance") {
 		t.Error("prompt should contain HIGH Relevance format instruction")
+	}
+	// Should contain the "Do NOT include" ban list.
+	if !containsStr(prompt, "Do NOT include") {
+		t.Error("prompt should contain 'Do NOT include' ban list")
 	}
 	if containsStr(prompt, "Additional Context from User") {
 		t.Error("prompt should not contain custom context section when empty")

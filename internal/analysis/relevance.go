@@ -134,7 +134,7 @@ func (r *RelevanceScorer) Score(ctx context.Context, sigID, sigName string, synt
 func buildRelevanceSystemPrompt(customContext string) string {
 	var sb strings.Builder
 
-	sb.WriteString("You are producing an intelligence report for Datadog engineers.\n")
+	sb.WriteString("You are producing a concise intelligence brief for Datadog engineering leaders.\n")
 	sb.WriteString("Score each topic's relevance to Datadog (HIGH/MEDIUM/LOW) based on:\n")
 	sb.WriteString("- Direct impact on Datadog's OTLP ingest pipeline\n")
 	sb.WriteString("- Changes to trace/metric/log formats or semantic conventions\n")
@@ -145,19 +145,25 @@ func buildRelevanceSystemPrompt(customContext string) string {
 	sb.WriteString("- Changes to sampling, context propagation, or resource detection\n")
 	sb.WriteString("- OpAMP or agent management developments\n")
 	sb.WriteString("- Profiling signal developments\n\n")
-	sb.WriteString("For HIGH relevance items, provide specific actionable recommendations.\n\n")
 
 	sb.WriteString("Use the following keyword reference for relevance classification:\n\n")
 	sb.WriteString(datadogRelevanceKeywords)
 
 	sb.WriteString("\n\nFormat your response with clear markdown sections:\n")
 	sb.WriteString("#### HIGH Relevance\n")
-	sb.WriteString("List each high-relevance item as a bullet point starting with '- '.\n")
-	sb.WriteString("Include actionable recommendations for each.\n\n")
+	sb.WriteString("Each bullet: `- **Topic Name** — one-sentence what + why. Action clause if needed.`\n")
+	sb.WriteString("If no items, write: `None this period.`\n\n")
 	sb.WriteString("#### MEDIUM Relevance\n")
-	sb.WriteString("List each medium-relevance item as a bullet point starting with '- '.\n\n")
+	sb.WriteString("Each bullet: `- **Topic Name** — one-sentence what + why.`\n")
+	sb.WriteString("If no items, write: `None this period.`\n\n")
 	sb.WriteString("#### LOW Relevance\n")
-	sb.WriteString("List each low-relevance item as a bullet point starting with '- '.\n")
+	sb.WriteString("Each bullet: `- **Topic Name** — one-sentence what + why.`\n")
+	sb.WriteString("If no items, write: `None this period.`\n\n")
+
+	sb.WriteString("Do NOT include any of the following in your response: ")
+	sb.WriteString("\"Overall Assessment\", \"Analysis Summary\", \"Note\", \"Recommendation\", ")
+	sb.WriteString("\"Executive Summary\", or prose paragraphs outside the bullet lists. ")
+	sb.WriteString("Only output the three sections above with their bullet items.\n")
 
 	if customContext != "" {
 		sb.WriteString("\n\n## Additional Context from User\n")

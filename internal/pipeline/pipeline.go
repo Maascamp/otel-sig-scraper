@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -207,8 +208,10 @@ func (p *Pipeline) AnalyzeOnly(ctx context.Context) error {
 	startStr := start.Format("2006-01-02")
 	endStr := end.Format("2006-01-02")
 
-	// Load SIGs from the store.
-	sigs, err := p.store.ListSIGs(p.cfg.SIGs)
+	// Load all SIGs from the store, then apply prefix-aware filtering.
+	// ListSIGs with nil loads all; filterSIGs handles prefix matching
+	// for names like "communications" → "communications-(website-...)"
+	sigs, err := p.store.ListSIGs(nil)
 	if err != nil {
 		return fmt.Errorf("listing SIGs from store: %w", err)
 	}
@@ -219,7 +222,7 @@ func (p *Pipeline) AnalyzeOnly(ctx context.Context) error {
 	// Deduplicate SIGs by ID (stale DB entries may produce duplicates).
 	sigs = deduplicateSIGs(sigs)
 
-	// Apply the same localization filter used during fetch.
+	// Apply prefix-aware filter (also excludes localization unless requested).
 	sigs = filterSIGs(sigs, p.cfg.SIGs)
 
 	log.Printf("pipeline: analyzing %d SIGs", len(sigs))
@@ -487,15 +490,21 @@ func filterSIGs(sigs []*store.SIG, filterIDs []string) []*store.SIG {
 		return filtered
 	}
 
-	idSet := make(map[string]bool, len(filterIDs))
-	for _, id := range filterIDs {
-		idSet[registry.NormalizeSIGID(id)] = true
+	normalized := make([]string, len(filterIDs))
+	for i, id := range filterIDs {
+		normalized[i] = registry.NormalizeSIGID(id)
 	}
 
 	var filtered []*store.SIG
 	for _, sig := range sigs {
-		if idSet[sig.ID] {
-			filtered = append(filtered, sig)
+		for _, filterID := range normalized {
+			// Exact match or prefix match — handles registry names that
+			// include parenthetical descriptions like
+			// "communications-(website-documentation-etc)".
+			if sig.ID == filterID || strings.HasPrefix(sig.ID, filterID+"-") {
+				filtered = append(filtered, sig)
+				break
+			}
 		}
 	}
 	return filtered

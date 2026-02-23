@@ -2,10 +2,13 @@ package report
 
 import (
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gordyrad/otel-sig-tracker/internal/analysis"
 )
@@ -41,50 +44,13 @@ func (g *MarkdownGenerator) GenerateSIGReport(report *analysis.SIGReport) (strin
 		notesStatus, videoStatus, slackStatus,
 	)
 
-	// Executive Summary
-	if report.RelevanceReport != nil && report.RelevanceReport.Report != "" {
-		b.WriteString("## Executive Summary\n\n")
-		b.WriteString(report.RelevanceReport.Report)
-		b.WriteString("\n\n")
+	// Relevance items as a flat priority-ordered list (no H/M/L headers)
+	if report.RelevanceReport != nil {
+		writeRelevanceItemsFlat(&b, report.RelevanceReport)
 	}
 
-	// High Relevance Items
-	if report.RelevanceReport != nil && len(report.RelevanceReport.HighItems) > 0 {
-		b.WriteString("#### 🔴 High Relevance to Datadog\n\n")
-		for _, item := range report.RelevanceReport.HighItems {
-			writeRelevanceItem(&b, item)
-		}
-	}
-
-	// Medium Relevance Items
-	if report.RelevanceReport != nil && len(report.RelevanceReport.MediumItems) > 0 {
-		b.WriteString("#### 🟡 Medium Relevance to Datadog\n\n")
-		for _, item := range report.RelevanceReport.MediumItems {
-			writeRelevanceItem(&b, item)
-		}
-	}
-
-	// Low Relevance Items
-	if report.RelevanceReport != nil && len(report.RelevanceReport.LowItems) > 0 {
-		b.WriteString("#### 🟢 Low Relevance / FYI\n\n")
-		for _, item := range report.RelevanceReport.LowItems {
-			fmt.Fprintf(&b, "- %s\n", item)
-		}
-		b.WriteString("\n")
-	}
-
-	// Source Links
-	b.WriteString("## Source Links\n\n")
-	if report.NotesLink != "" {
-		fmt.Fprintf(&b, "- Meeting Notes: %s\n", report.NotesLink)
-	}
-	if report.RecordingLink != "" {
-		fmt.Fprintf(&b, "- Recording: %s\n", report.RecordingLink)
-	}
-	if report.SlackChannel != "" {
-		fmt.Fprintf(&b, "- Slack Channel: %s\n", report.SlackChannel)
-	}
-	b.WriteString("\n")
+	// Inline data sources
+	writeDataSources(&b, report)
 
 	// Write file
 	filename := sigReportFilename(report.DateRangeEnd, report.SIGID)
@@ -103,6 +69,19 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 		return "", fmt.Errorf("creating output directory: %w", err)
 	}
 
+	// Deduplicate SIG reports by normalized name.
+	deduped := deduplicateDigestSIGs(digest.SIGReports)
+
+	// Partition into active (has relevance data) and quiet (no data).
+	var active, quiet []*analysis.SIGReport
+	for _, sr := range deduped {
+		if sr.RelevanceReport != nil && totalRelevanceItems(sr.RelevanceReport) > 0 {
+			active = append(active, sr)
+		} else {
+			quiet = append(quiet, sr)
+		}
+	}
+
 	var b strings.Builder
 
 	// Title
@@ -110,20 +89,31 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 	fmt.Fprintf(&b, "# OTel Weekly Digest — %s\n\n", dateRange)
 
 	// Metadata line
-	fmt.Fprintf(&b, "> Covering: %d SIGs | Generated: %s\n\n",
-		len(digest.SIGReports),
+	fmt.Fprintf(&b, "> %d SIGs with activity | %d quiet | Generated: %s\n\n",
+		len(active),
+		len(quiet),
 		time.Now().UTC().Format("2006-01-02 15:04 UTC"),
 	)
 
-	// SIG-by-SIG Summaries (only SIGs with analysis data)
+	// Top Takeaways — top high-relevance items across all SIGs
+	writeTopTakeaways(&b, active)
+
+	// SIG-by-SIG Summaries (only active SIGs, flat priority-ordered items)
 	b.WriteString("## SIG-by-SIG Summaries\n\n")
-	for _, sr := range digest.SIGReports {
-		if sr.RelevanceReport == nil || sr.RelevanceReport.Report == "" {
-			continue
+	for _, sr := range active {
+		fmt.Fprintf(&b, "### %s\n\n", sr.SIGName)
+		writeRelevanceItemsFlat(&b, sr.RelevanceReport)
+		writeDataSources(&b, sr)
+	}
+
+	// Quiet This Week — one-line list of inactive SIGs
+	if len(quiet) > 0 {
+		b.WriteString("## Quiet This Week\n\n")
+		names := make([]string, len(quiet))
+		for i, sr := range quiet {
+			names[i] = sr.SIGName
 		}
-		fmt.Fprintf(&b, "# %s\n\n", sr.SIGName)
-		b.WriteString(stripReportHeading(sr.RelevanceReport.Report))
-		b.WriteString("\n\n")
+		fmt.Fprintf(&b, "%s\n\n", strings.Join(names, ", "))
 	}
 
 	// Cross-SIG Themes
@@ -133,11 +123,11 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 		b.WriteString("\n\n")
 	}
 
-	// Appendix: Processing Stats
+	// Appendix: Processing Stats (uses deduped list)
 	b.WriteString("## Appendix: Processing Stats\n\n")
 	b.WriteString("| SIG | Notes | Video | Slack | Status |\n")
 	b.WriteString("|-----|-------|-------|-------|--------|\n")
-	for _, sr := range digest.SIGReports {
+	for _, sr := range deduped {
 		notes := sourceStatus("notes", sr.SourcesUsed, sr.SourcesMissing)
 		video := sourceStatus("video", sr.SourcesUsed, sr.SourcesMissing)
 		slack := sourceStatus("slack", sr.SourcesUsed, sr.SourcesMissing)
@@ -175,6 +165,157 @@ func (g *MarkdownGenerator) GenerateDigestReport(digest *analysis.DigestReport) 
 	return filePath, nil
 }
 
+// writeTopTakeaways collects high-relevance items across SIGs and writes the top 10
+// with [SIG] attribution.
+func writeTopTakeaways(b *strings.Builder, active []*analysis.SIGReport) {
+	type attributed struct {
+		sigName string
+		item    string
+	}
+	var items []attributed
+	for _, sr := range active {
+		if sr.RelevanceReport == nil {
+			continue
+		}
+		for _, item := range sr.RelevanceReport.HighItems {
+			items = append(items, attributed{sigName: sr.SIGName, item: item})
+		}
+	}
+	if len(items) == 0 {
+		return
+	}
+
+	b.WriteString("## Top Takeaways\n\n")
+	limit := 10
+	if len(items) < limit {
+		limit = len(items)
+	}
+	for i := 0; i < limit; i++ {
+		fmt.Fprintf(b, "- [%s] %s\n", items[i].sigName, ensureBoldTopic(items[i].item))
+	}
+	b.WriteString("\n")
+}
+
+// writeRelevanceItemsFlat renders high, medium, low items as one flat priority-ordered
+// bullet list with no section headers.
+func writeRelevanceItemsFlat(b *strings.Builder, rr *analysis.RelevanceReport) {
+	if rr == nil {
+		return
+	}
+	hasItems := len(rr.HighItems) > 0 || len(rr.MediumItems) > 0 || len(rr.LowItems) > 0
+	if !hasItems {
+		return
+	}
+	for _, item := range rr.HighItems {
+		fmt.Fprintf(b, "- %s\n", ensureBoldTopic(item))
+	}
+	for _, item := range rr.MediumItems {
+		fmt.Fprintf(b, "- %s\n", ensureBoldTopic(item))
+	}
+	for _, item := range rr.LowItems {
+		fmt.Fprintf(b, "- %s\n", ensureBoldTopic(item))
+	}
+	b.WriteString("\n")
+}
+
+// writeDataSources renders a compact inline sources line for a SIG report.
+// If no links are present, nothing is written.
+func writeDataSources(b *strings.Builder, sr *analysis.SIGReport) {
+	if sr.NotesLink == "" && sr.RecordingLink == "" && sr.SlackChannel == "" {
+		return
+	}
+	var parts []string
+	if sr.NotesLink != "" {
+		parts = append(parts, fmt.Sprintf("[Meeting Notes](%s)", sr.NotesLink))
+	}
+	if sr.RecordingLink != "" {
+		parts = append(parts, fmt.Sprintf("[Recording](%s)", sr.RecordingLink))
+	}
+	if sr.SlackChannel != "" {
+		parts = append(parts, fmt.Sprintf("Slack: `%s`", sr.SlackChannel))
+	}
+	fmt.Fprintf(b, "> Sources: %s\n\n", strings.Join(parts, " | "))
+}
+
+// ensureBoldTopic ensures the item starts with a **bold topic** prefix.
+// If the item already starts with **, it is returned as-is.
+// Otherwise it tries to bold the text before the first colon or em-dash separator.
+func ensureBoldTopic(item string) string {
+	if strings.HasPrefix(item, "**") {
+		return item
+	}
+	// Look for a natural separator: " — " (em-dash) or ": "
+	for _, sep := range []string{" — ", ": "} {
+		if idx := strings.Index(item, sep); idx > 0 && idx < 80 {
+			return "**" + item[:idx] + "**" + item[idx:]
+		}
+	}
+	return item
+}
+
+// emojiPattern matches common emoji sequences (single and multi-codepoint).
+var emojiPattern = regexp.MustCompile(`[\x{1F000}-\x{1FFFF}]|[\x{2600}-\x{27BF}]|[\x{FE00}-\x{FE0F}]|[\x{200D}]|[\x{20E3}]|[\x{E0020}-\x{E007F}]`)
+
+// htmlEntityPattern matches HTML entities like &amp; &#8211; etc.
+var htmlEntityPattern = regexp.MustCompile(`&[a-zA-Z]+;|&#[0-9]+;|&#x[0-9a-fA-F]+;`)
+
+// normalizeSIGName normalizes a SIG name for deduplication by lowercasing,
+// stripping emoji, HTML entities, and collapsing whitespace.
+func normalizeSIGName(name string) string {
+	// Decode HTML entities first (e.g. &amp; -> &), then strip remaining patterns.
+	s := html.UnescapeString(name)
+	// Strip HTML entity patterns that survived.
+	s = htmlEntityPattern.ReplaceAllString(s, "")
+	// Strip emoji.
+	s = emojiPattern.ReplaceAllString(s, "")
+	// Lowercase.
+	s = strings.ToLower(s)
+	// Collapse whitespace and trim.
+	fields := strings.FieldsFunc(s, unicode.IsSpace)
+	return strings.Join(fields, " ")
+}
+
+// deduplicateDigestSIGs merges SIG reports that have the same normalized name,
+// keeping the entry with the most relevance items.
+func deduplicateDigestSIGs(reports []*analysis.SIGReport) []*analysis.SIGReport {
+	type entry struct {
+		report *analysis.SIGReport
+		count  int
+	}
+	seen := make(map[string]*entry)
+	var order []string
+
+	for _, sr := range reports {
+		key := normalizeSIGName(sr.SIGName)
+		count := 0
+		if sr.RelevanceReport != nil {
+			count = totalRelevanceItems(sr.RelevanceReport)
+		}
+		if existing, ok := seen[key]; ok {
+			if count > existing.count {
+				seen[key] = &entry{report: sr, count: count}
+			}
+		} else {
+			seen[key] = &entry{report: sr, count: count}
+			order = append(order, key)
+		}
+	}
+
+	result := make([]*analysis.SIGReport, 0, len(order))
+	for _, key := range order {
+		result = append(result, seen[key].report)
+	}
+	return result
+}
+
+// totalRelevanceItems returns the total number of items across all relevance levels.
+func totalRelevanceItems(rr *analysis.RelevanceReport) int {
+	if rr == nil {
+		return 0
+	}
+	return len(rr.HighItems) + len(rr.MediumItems) + len(rr.LowItems)
+}
+
 // sourceStatus returns a checkmark or cross for whether a source type was used or missing.
 func sourceStatus(sourceType string, used, missing []string) string {
 	for _, s := range used {
@@ -201,15 +342,6 @@ func sigStatus(sr *analysis.SIGReport) string {
 	return "No data"
 }
 
-// writeRelevanceItem writes a single relevance item as a Markdown section.
-// Items are written as-is since the LLM formats them with bullet details.
-func writeRelevanceItem(b *strings.Builder, item string) {
-	// Each item may contain structured markdown from the LLM.
-	// Write it directly, ensuring proper spacing.
-	b.WriteString(item)
-	b.WriteString("\n\n")
-}
-
 // formatDateRange creates a readable date range string.
 func formatDateRange(start, end string) string {
 	if start == "" && end == "" {
@@ -223,7 +355,6 @@ func formatDateRange(start, end string) string {
 
 // sigReportFilename generates a filename like "2026-02-19-collector-report.md".
 func sigReportFilename(dateEnd, sigID string) string {
-	// Use the end date for the filename; fall back to today if empty.
 	date := dateEnd
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -243,15 +374,6 @@ func formatTokens(n int) string {
 	return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 }
 
-// digestFilename generates a filename like "2026-02-19-weekly-digest.md".
-func digestFilename(dateEnd string) string {
-	date := dateEnd
-	if date == "" {
-		date = time.Now().Format("2006-01-02")
-	}
-	return fmt.Sprintf("%s-weekly-digest.md", date)
-}
-
 // stripReportHeading removes the leading title heading and optional subtitle
 // lines that the LLM inconsistently adds to its report output. It strips any
 // leading lines starting with "#"–"###" or "**Analysis" before the first "####" section.
@@ -261,25 +383,30 @@ func stripReportHeading(text string) string {
 	for start < len(lines) {
 		trimmed := strings.TrimSpace(lines[start])
 		if trimmed == "" {
-			// Skip blank lines between heading and content.
 			start++
 			continue
 		}
 		if strings.HasPrefix(trimmed, "# ") && !strings.HasPrefix(trimmed, "#### ") {
-			// Heading levels 1–3 added by LLM — skip them.
 			start++
 			continue
 		}
 		if strings.HasPrefix(trimmed, "**Analysis") {
-			// Subtitle line like "**Analysis Period: ...**" — skip it.
 			start++
 			continue
 		}
-		// Reached real content.
 		break
 	}
 	if start == 0 {
 		return text
 	}
 	return strings.Join(lines[start:], "\n")
+}
+
+// digestFilename generates a filename like "2026-02-19-weekly-digest.md".
+func digestFilename(dateEnd string) string {
+	date := dateEnd
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+	return fmt.Sprintf("%s-weekly-digest.md", date)
 }

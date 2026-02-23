@@ -222,6 +222,22 @@ func TestFilterSIGs_NoMatch(t *testing.T) {
 	}
 }
 
+func TestFilterSIGs_PrefixMatch(t *testing.T) {
+	sigs := []*store.SIG{
+		{ID: "communications-(website-documentation-etc)", Name: "Communications (Website, Documentation, etc.)"},
+		{ID: "collector", Name: "Collector"},
+	}
+
+	// "communications" should prefix-match the long ID.
+	result := filterSIGs(sigs, []string{"communications"})
+	if len(result) != 1 {
+		t.Fatalf("filterSIGs prefix match: got %d SIGs, want 1", len(result))
+	}
+	if result[0].ID != "communications-(website-documentation-etc)" {
+		t.Errorf("filtered SIG ID = %q, want communications-(website-documentation-etc)", result[0].ID)
+	}
+}
+
 func TestFilterSIGs_EmptyInput(t *testing.T) {
 	result := filterSIGs(nil, []string{"sig-a"})
 	if len(result) != 0 {
