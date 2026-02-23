@@ -420,6 +420,9 @@ func (p *Pipeline) analyzeSIG(ctx context.Context, sig *store.SIG, start, end ti
 	if sig.NotesDocID != "" {
 		sr.NotesLink = fmt.Sprintf("https://docs.google.com/document/d/%s", sig.NotesDocID)
 	}
+	if len(transcripts) > 0 && transcripts[0].ZoomURL != "" {
+		sr.RecordingLink = transcripts[0].ZoomURL
+	}
 
 	// If we have no summaries, return the partial report.
 	if len(summaries) == 0 {
